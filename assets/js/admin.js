@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', function() {
-    /// Toggle between list and editor views
+    // Toggle between list and editor views
     const addNewBtn = document.getElementById('oc-add-new');
     const carouselList = document.querySelector('.oc-carousel-list');
     const carouselEditor = document.querySelector('.oc-carousel-editor');
@@ -60,6 +60,18 @@ document.addEventListener('DOMContentLoaded', function() {
         slideElement.className = 'oc-slide';
         slideElement.dataset.slideId = slideId;
         
+        // Ensure slideData has all required properties
+        const defaultSlideData = {
+            bg_image: '',
+            title: '',
+            subtitle: '',
+            button_link: '',
+            button_text: 'Shop Now'
+        };
+        
+        // Merge default data with provided data
+        slideData = Object.assign({}, defaultSlideData, slideData);
+        
         slideElement.innerHTML = `
             <div class="oc-slide-header">
                 <h4>Slide #${slidesContainer.children.length + 1}</h4>
@@ -70,33 +82,33 @@ document.addEventListener('DOMContentLoaded', function() {
                     <label>Background Image</label>
                     <button class="button oc-upload-bg">Upload</button>
                     <input type="text" class="oc-bg-image regular-text" 
-                           value="${slideData.bg_image || ''}">
+                           value="${slideData.bg_image ? esc_attr(slideData.bg_image) : ''}" readonly>
                     <div class="oc-image-preview" style="display: ${slideData.bg_image ? 'block' : 'none'}">
-                        <img src="${slideData.bg_image || ''}" style="max-width:100px;">
+                        <img src="${slideData.bg_image ? esc_attr(slideData.bg_image) : ''}" style="max-width:100px;">
                     </div>
                 </div>
                 <div class="oc-form-group">
                     <label>Title Text</label>
                     <input type="text" class="oc-title-text regular-text" 
-                           value="${slideData.title || ''}" 
+                           value="${slideData.title ? esc_attr(slideData.title) : ''}" 
                            placeholder="e.g. Buy 2 @999">
                 </div>
                 <div class="oc-form-group">
                     <label>Subtitle Text</label>
                     <input type="text" class="oc-subtitle-text regular-text" 
-                           value="${slideData.subtitle || ''}" 
+                           value="${slideData.subtitle ? esc_attr(slideData.subtitle) : ''}" 
                            placeholder="e.g. Get any 2 T-shirts for 999">
                 </div>
                 <div class="oc-form-group">
                     <label>Button Link</label>
                     <input type="text" class="oc-button-link regular-text" 
-                           value="${slideData.button_link || ''}" 
+                           value="${slideData.button_link ? esc_attr(slideData.button_link) : ''}" 
                            placeholder="URL when clicked">
                 </div>
                 <div class="oc-form-group">
                     <label>Button Text</label>
                     <input type="text" class="oc-button-text regular-text" 
-                           value="${slideData.button_text || 'Shop Now'}">
+                           value="${slideData.button_text ? esc_attr(slideData.button_text) : 'Shop Now'}">
                 </div>
             </div>
         `;
@@ -105,6 +117,21 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Initialize media uploader for this slide
         initMediaUploader(slideElement);
+    }
+
+    // Helper function to escape HTML attributes
+    function esc_attr(str) {
+        if (!str) return '';
+        return str.replace(/[&<>"']/g, function(match) {
+            const escape = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            };
+            return escape[match];
+        });
     }
 
     function initMediaUploader(slideElement) {
@@ -123,9 +150,11 @@ document.addEventListener('DOMContentLoaded', function() {
             
             frame.on('select', function() {
                 const attachment = frame.state().get('selection').first().toJSON();
-                input.value = attachment.url;
-                preview.style.display = 'block';
-                preview.querySelector('img').src = attachment.url;
+                if (attachment && attachment.url) {
+                    input.value = attachment.url;
+                    preview.style.display = 'block';
+                    preview.querySelector('img').src = attachment.url;
+                }
             });
             
             frame.open();
@@ -141,101 +170,99 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Save carousel
-document.getElementById('oc-save-carousel')?.addEventListener('click', async function(e) {
-    e.preventDefault();
-    
-    const name = document.getElementById('oc-carousel-name').value;
-    const slug = document.getElementById('oc-carousel-slug').value;
-    
-    if (!name || !slug) {
-        alert('Name and slug are required!');
-        return;
-    }
-    
-    // Collect slides data
-    const slides = [];
-    document.querySelectorAll('.oc-slide').forEach(slide => {
-        slides.push({
-            bg_image: slide.querySelector('.oc-bg-image').value,
-            title: slide.querySelector('.oc-title-text').value,
-            subtitle: slide.querySelector('.oc-subtitle-text').value,
-            button_link: slide.querySelector('.oc-button-link').value,
-            button_text: slide.querySelector('.oc-button-text').value
-        });
-    });
-    
-    if (slides.length === 0) {
-        alert('Add at least one slide!');
-        return;
-    }
-    
-    // Collect settings
-    const settings = {
-        slides_per_view: parseInt(document.getElementById('oc-slides-per-view').value),
-        effect: document.getElementById('oc-effect').value,
-        autoplay: document.getElementById('oc-autoplay').checked,
-        autoplay_delay: parseInt(document.getElementById('oc-autoplay-delay').value)
-    };
-    
-    // Show loading state
-    const saveBtn = this;
-    const originalText = saveBtn.textContent;
-    saveBtn.textContent = 'Saving...';
-    saveBtn.disabled = true;
-
-    // REPLACE FROM HERE >>>>
-    try {
-        const params = new URLSearchParams({
-            action: 'oc_save_carousel',
-            nonce: oc_admin_vars.nonce,
-            name: name,
-            slug: slug,
-            slides: JSON.stringify(slides),
-            settings: JSON.stringify(settings)
-        });
-
-        const carouselId = document.querySelector('.oc-carousel-editor').dataset.id;
-        if (carouselId) {
-            params.append('carousel_id', carouselId);
-        }
-
-        const response = await fetch(oc_admin_vars.ajax_url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: params
-        });
-
-        // Add the improved error handling
-        if (!response.ok) {
-            const text = await response.text();
-            throw new Error(`HTTP error! status: ${response.status} - ${text}`);
-        }
-
-        const data = await response.json();
+    document.getElementById('oc-save-carousel')?.addEventListener('click', async function(e) {
+        e.preventDefault();
         
-        if (data.success) {
-            alert('Carousel saved successfully!');
-            window.location.reload();
-        } else {
-            throw new Error(data.data || 'Failed to save carousel');
+        const name = document.getElementById('oc-carousel-name').value;
+        const slug = document.getElementById('oc-carousel-slug').value;
+        
+        if (!name || !slug) {
+            alert('Name and slug are required!');
+            return;
         }
-    } catch (error) {
-        console.error('Error:', error);
-        alert('Failed to save carousel: ' + error.message);
-    } finally {
-        saveBtn.textContent = originalText;
-        saveBtn.disabled = false;
-    }
+        
+        // Collect slides data
+        const slides = [];
+        document.querySelectorAll('.oc-slide').forEach(slide => {
+            const bgImage = slide.querySelector('.oc-bg-image').value;
+            if (!bgImage) {
+                alert('All slides must have a background image!');
+                return;
+            }
+            
+            slides.push({
+                bg_image: bgImage,
+                title: slide.querySelector('.oc-title-text').value,
+                subtitle: slide.querySelector('.oc-subtitle-text').value,
+                button_link: slide.querySelector('.oc-button-link').value,
+                button_text: slide.querySelector('.oc-button-text').value || 'Shop Now'
+            });
+        });
+        
+        if (slides.length === 0) {
+            alert('Add at least one slide!');
+            return;
+        }
+        
+        // Collect settings
+        const settings = {
+            slides_per_view: parseInt(document.getElementById('oc-slides-per-view').value),
+            effect: document.getElementById('oc-effect').value,
+            autoplay: document.getElementById('oc-autoplay').checked,
+            autoplay_delay: parseInt(document.getElementById('oc-autoplay-delay').value)
+        };
+        
+        // Show loading state
+        const saveBtn = this;
+        const originalText = saveBtn.textContent;
+        saveBtn.textContent = 'Saving...';
+        saveBtn.disabled = true;
+
+        try {
+            const params = new URLSearchParams({
+                action: 'oc_save_carousel',
+                nonce: oc_admin_vars.nonce,
+                name: name,
+                slug: slug,
+                slides: JSON.stringify(slides),
+                settings: JSON.stringify(settings)
+            });
+
+            const carouselId = document.querySelector('.oc-carousel-editor').dataset.id;
+            if (carouselId) {
+                params.append('carousel_id', carouselId);
+            }
+
+            const response = await fetch(oc_admin_vars.ajax_url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: params
+            });
+
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(`HTTP error! status: ${response.status} - ${text}`);
+            }
+
+            const data = await response.json();
+            
+            if (data.success) {
+                alert('Carousel saved successfully!');
+                window.location.reload();
+            } else {
+                throw new Error(data.data || 'Failed to save carousel');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Failed to save carousel: ' + error.message);
+        } finally {
+            saveBtn.textContent = originalText;
+            saveBtn.disabled = false;
+        }
     });
 
-
-
-
-
-
-  
     // Edit carousel
     document.addEventListener('click', async function(e) {
         if (e.target.classList.contains('oc-edit-carousel')) {
