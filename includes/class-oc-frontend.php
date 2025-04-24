@@ -11,11 +11,9 @@ class OC_Frontend {
     }
 
     public function register_assets() {
-        // Register assets but don't enqueue yet
         wp_register_style('oc-frontend-css', OC_PLUGIN_URL . 'assets/css/frontend.css', [], OC_VERSION);
         wp_register_script('oc-frontend-js', OC_PLUGIN_URL . 'assets/js/frontend.js', [], OC_VERSION, true);
         
-        // Add preload hints
         add_action('wp_head', function() {
             if ($this->should_load_assets) {
                 echo '<link rel="preload" href="' . esc_url(OC_PLUGIN_URL . 'assets/css/frontend.css') . '" as="style">';
@@ -57,17 +55,14 @@ class OC_Frontend {
         $atts = shortcode_atts(['slug' => ''], $atts);
         if (empty($atts['slug'])) return '';
         
-        // Generate cache key based on user agent for mobile/desktop variations
         $is_mobile = wp_is_mobile();
         $cache_key = $atts['slug'] . '_' . ($is_mobile ? 'mobile' : 'desktop');
         
-        // Check shortcode cache first
         $cached_html = OC_Cache::get_shortcode_cache($cache_key);
         if ($cached_html) {
             return $cached_html;
         }
         
-        // Get carousel from cache or DB
         $carousel = OC_Cache::get_carousel($atts['slug']);
         if (!$carousel) return '';
         
@@ -86,7 +81,6 @@ class OC_Frontend {
             ];
         }
         
-        // Optimize image sizes based on device
         $image_size = $is_mobile ? '600x400' : '1200x800';
         
         ob_start();
@@ -102,34 +96,25 @@ class OC_Frontend {
             
             <div class="oc-carousel-container">
                 <?php foreach ($slides as $index => $slide): 
-                    // Ensure slide data exists and has required fields
-                    if (!isset($slide['bg_image']) || empty($slide['bg_image'])) {
-                        continue; // Skip slides without images
-                    }
+                    if (empty($slide['bg_image'])) continue;
                     
-                    // Only output visible slides initially
-                    $is_visible = $index < 3;
-                    $slide_class = $is_visible ? 'oc-slide' : 'oc-slide oc-slide-deferred';
+                    // Important: Remove the deferred class and data attribute
+                    $slide_class = 'oc-slide';
                     ?>
-                    <div class="<?php echo esc_attr($slide_class); ?>" <?php echo !$is_visible ? 'data-deferred="true"' : ''; ?>>
+                    <div class="<?php echo esc_attr($slide_class); ?>">
                         <div class="oc-coupon">
                             <div class="oc-coupon-cuts top">
                                 <div class="oc-top-cut"></div>
                             </div>
                             
                             <div class="oc-coupon-container">
-                                <?php if ($is_visible): ?>
-                                    <img loading="lazy" 
-                                         decoding="async"
-                                         fetchpriority="<?php echo $index === 0 ? 'high' : 'low'; ?>"
-                                         draggable="false" 
-                                         alt="<?php echo esc_attr($slide['title']); ?>" 
-                                         src="<?php echo esc_url($slide['bg_image']); ?>"
-                                         class="oc-coupon-bg">
-                                <?php else: ?>
-                                    <div class="oc-coupon-bg-placeholder" 
-                                         data-src="<?php echo esc_url($slide['bg_image']); ?>"></div>
-                                <?php endif; ?>
+                                <img loading="<?php echo $index === 0 ? 'eager' : 'lazy'; ?>" 
+                                     decoding="async"
+                                     fetchpriority="<?php echo $index === 0 ? 'high' : 'low'; ?>"
+                                     draggable="false" 
+                                     alt="<?php echo esc_attr($slide['title']); ?>" 
+                                     src="<?php echo esc_url($slide['bg_image']); ?>"
+                                     class="oc-coupon-bg">
                                 
                                 <div class="oc-coupon-content">
                                     <p class="oc-coupon-title"><?php echo esc_html($slide['title']); ?></p>
@@ -184,7 +169,6 @@ class OC_Frontend {
         <?php
         $html = ob_get_clean();
         
-        // Cache the rendered HTML
         OC_Cache::set_shortcode_cache($cache_key, $html);
         
         return $html;

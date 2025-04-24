@@ -1,12 +1,17 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // Performance optimization: Use requestIdleCallback for non-critical initialization
     const initCarousel = (carousel) => {
         const container = carousel.querySelector('.oc-carousel-container');
         const slides = Array.from(carousel.querySelectorAll('.oc-slide'));
-        const deferredSlides = Array.from(carousel.querySelectorAll('.oc-slide-deferred'));
         const prevBtn = carousel.querySelector('.oc-carousel-nav.prev');
         const nextBtn = carousel.querySelector('.oc-carousel-nav.next');
         const dots = Array.from(carousel.querySelectorAll('.oc-carousel-dot'));
+        
+        if (slides.length === 0) return;
+
+        // Set initial states
+        slides[0].classList.add('active');
+        if (slides[1]) slides[1].classList.add('next');
+        if (slides[slides.length - 1]) slides[slides.length - 1].classList.add('prev');
         
         const config = {
             slidesPerView: parseInt(carousel.dataset.slidesPerView) || 2,
@@ -17,94 +22,64 @@ document.addEventListener('DOMContentLoaded', function() {
         const state = {
             currentIndex: 0,
             autoplayInterval: null,
-            isAnimating: false
+            isAnimating: false,
+            isDragging: false,
+            startX: 0,
+            currentX: 0,
+            isNavigating: false // New state to track navigation
         };
 
-        // Initialize deferred slides
-        const loadDeferredSlides = () => {
-            deferredSlides.forEach(slide => {
-                if (slide.dataset.deferred === 'true') {
-                    const placeholder = slide.querySelector('.oc-coupon-bg-placeholder');
-                    if (placeholder) {
-                        const img = document.createElement('img');
-                        img.loading = 'lazy';
-                        img.decoding = 'async';
-                        img.draggable = false;
-                        img.alt = '';
-                        img.src = 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\'/%3E';
-                        img.dataset.src = placeholder.dataset.src;
-                        img.className = 'oc-coupon-bg lazy';
-                        placeholder.parentNode.replaceChild(img, placeholder);
-                    }
-                    slide.dataset.deferred = 'false';
-                }
-            });
-        };
-
-        // Initialize lazy loading with Intersection Observer
-        const lazyLoadImages = () => {
-            const imageObserver = new IntersectionObserver((entries, observer) => {
-                entries.forEach(entry => {
-                    if (entry.isIntersecting) {
-                        const img = entry.target;
-                        if (img.dataset.src) {
-                            const tempImage = new Image();
-                            tempImage.onload = () => {
-                                img.src = img.dataset.src;
-                                img.classList.remove('lazy');
-                                delete img.dataset.src;
-                            };
-                            tempImage.src = img.dataset.src;
-                        }
-                        observer.unobserve(img);
-                    }
-                });
-            }, {
-                rootMargin: '50px'
-            });
-
-            carousel.querySelectorAll('img.lazy').forEach(img => imageObserver.observe(img));
-        };
-
-        const updateCarousel = () => {
-            if (state.isAnimating) return;
+        const updateCarousel = (instant = false) => {
+            if (state.isAnimating && !instant) return;
             state.isAnimating = true;
 
-            requestAnimationFrame(() => {
-                slides.forEach((slide, index) => {
-                    slide.classList.remove('active', 'prev', 'next');
-                    
-                    if (index === state.currentIndex) {
-                        slide.classList.add('active');
-                        slide.style.transform = 'translateX(-50%) scale(1)';
-                        slide.style.opacity = '1';
-                        slide.style.zIndex = '3';
-                    } else if (index === getPrevIndex()) {
-                        slide.classList.add('prev');
-                        slide.style.transform = 'translateX(-150%) scale(0.95)';
-                        slide.style.opacity = '1';
-                        slide.style.zIndex = '2';
-                    } else if (index === getNextIndex()) {
-                        slide.classList.add('next');
-                        slide.style.transform = 'translateX(50%) scale(0.95)';
-                        slide.style.opacity = '1';
-                        slide.style.zIndex = '2';
-                    } else {
-                        slide.style.opacity = '0';
-                        slide.style.zIndex = '1';
-                    }
-                });
-                
-                updatePagination();
-                state.isAnimating = false;
+            const prevIndex = (state.currentIndex - 1 + slides.length) % slides.length;
+            const nextIndex = (state.currentIndex + 1) % slides.length;
+
+            slides.forEach((slide, index) => {
+                slide.classList.remove('active', 'prev', 'next');
+                if (instant) {
+                    slide.style.transition = 'none';
+                } else {
+                    slide.style.transition = '';
+                }
+
+                if (index === state.currentIndex) {
+                    slide.classList.add('active');
+                    slide.style.transform = 'translateX(-50%) scale(1)';
+                    slide.style.opacity = '1';
+                    slide.style.zIndex = '3';
+                } else if (index === prevIndex) {
+                    slide.classList.add('prev');
+                    slide.style.transform = 'translateX(-150%) scale(0.75)';
+                    slide.style.opacity = '1';
+                    slide.style.zIndex = '2';
+                } else if (index === nextIndex) {
+                    slide.classList.add('next');
+                    slide.style.transform = 'translateX(50%) scale(0.75)';
+                    slide.style.opacity = '1';
+                    slide.style.zIndex = '2';
+                } else {
+                    slide.style.transform = 'translateX(0) scale(0.5)';
+                    slide.style.opacity = '0';
+                    slide.style.zIndex = '1';
+                }
             });
+
+            if (instant) {
+                requestAnimationFrame(() => {
+                    slides.forEach(slide => {
+                        slide.style.transition = '';
+                    });
+                });
+            }
+
+            updatePagination();
+            state.isAnimating = false;
         };
 
-        const getPrevIndex = () => (state.currentIndex - 1 + slides.length) % slides.length;
-        const getNextIndex = () => (state.currentIndex + 1) % slides.length;
-
         const navigate = (direction) => {
-            if (state.isAnimating) return;
+            if (state.isAnimating || state.isNavigating) return;
             state.currentIndex = (state.currentIndex + direction + slides.length) % slides.length;
             updateCarousel();
         };
@@ -117,44 +92,74 @@ document.addEventListener('DOMContentLoaded', function() {
         };
 
         // Initialize
-        loadDeferredSlides();
-        lazyLoadImages();
-        updateCarousel();
+        updateCarousel(true);
 
         // Event Listeners
         if (prevBtn) prevBtn.addEventListener('click', () => navigate(-1));
         if (nextBtn) nextBtn.addEventListener('click', () => navigate(1));
-        
+
+        // Pagination
         dots.forEach((dot, index) => {
             dot.addEventListener('click', () => {
+                if (state.isAnimating || state.isNavigating) return;
                 state.currentIndex = index;
                 updateCarousel();
             });
         });
 
-        // Touch events with passive listeners
-        let touchStartX = 0;
-        let touchEndX = 0;
+        // Touch and Mouse Events
+        const handleDragStart = (e) => {
+            if (state.isNavigating) return;
+            state.isDragging = true;
+            state.startX = e.type === 'mousedown' ? e.clientX : e.touches[0].clientX;
+            container.style.cursor = 'grabbing';
+        };
 
-        container.addEventListener('touchstart', (e) => {
-            touchStartX = e.changedTouches[0].screenX;
-        }, { passive: true });
+        const handleDragMove = (e) => {
+            if (!state.isDragging || state.isNavigating) return;
+            e.preventDefault();
+            state.currentX = e.type === 'mousemove' ? e.clientX : e.touches[0].clientX;
+            const diff = state.currentX - state.startX;
 
-        container.addEventListener('touchend', (e) => {
-            touchEndX = e.changedTouches[0].screenX;
-            const diff = touchEndX - touchStartX;
-            
+            slides.forEach(slide => {
+                slide.style.transition = 'none';
+                const currentTransform = new WebKitCSSMatrix(window.getComputedStyle(slide).transform);
+                const newX = currentTransform.m41 + diff * 0.1;
+                slide.style.transform = `translateX(${newX}px) scale(${currentTransform.m11})`;
+            });
+        };
+
+        const handleDragEnd = () => {
+            if (!state.isDragging || state.isNavigating) return;
+            state.isDragging = false;
+            container.style.cursor = '';
+
+            const diff = state.currentX - state.startX;
             if (Math.abs(diff) > 50) {
                 navigate(diff > 0 ? -1 : 1);
+            } else {
+                updateCarousel();
             }
-        }, { passive: true });
+        };
 
-        // Optimized autoplay
+        // Mouse Events
+        container.addEventListener('mousedown', handleDragStart);
+        window.addEventListener('mousemove', handleDragMove);
+        window.addEventListener('mouseup', handleDragEnd);
+
+        // Touch Events
+        container.addEventListener('touchstart', handleDragStart, { passive: true });
+        container.addEventListener('touchmove', handleDragMove, { passive: false });
+        container.addEventListener('touchend', handleDragEnd);
+
+        // Autoplay
         if (config.autoplay) {
             const startAutoplay = () => {
                 stopAutoplay();
                 state.autoplayInterval = setInterval(() => {
-                    requestAnimationFrame(() => navigate(1));
+                    if (!state.isDragging && !state.isNavigating) {
+                        navigate(1);
+                    }
                 }, config.autoplayDelay);
             };
 
@@ -165,14 +170,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             };
 
-            // Start autoplay
+            // Start autoplay if page is visible
             if (document.visibilityState === 'visible') {
                 startAutoplay();
             }
 
-            // Event listeners for autoplay control
+            // Pause on hover
             carousel.addEventListener('mouseenter', stopAutoplay);
             carousel.addEventListener('mouseleave', startAutoplay);
+
+            // Handle visibility changes
             document.addEventListener('visibilitychange', () => {
                 if (document.hidden) {
                     stopAutoplay();
@@ -181,8 +188,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
 
-            // Stop autoplay when page is not in viewport
-            const observeVisibility = new IntersectionObserver((entries) => {
+            // Handle intersection
+            const observer = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
                         startAutoplay();
@@ -190,21 +197,44 @@ document.addEventListener('DOMContentLoaded', function() {
                         stopAutoplay();
                     }
                 });
-            }, { threshold: 0.1 });
+            }, { threshold: 0.5 });
 
-            observeVisibility.observe(carousel);
+            observer.observe(carousel);
         }
 
-        // Optimize button click handlers
+        // Button click handlers
         carousel.querySelectorAll('.oc-coupon-button').forEach(button => {
             button.addEventListener('click', (e) => {
                 e.preventDefault();
-                window.location.href = button.dataset.href;
+                e.stopPropagation(); // Prevent event bubbling
+                const href = button.dataset.href;
+                if (href) {
+                    state.isNavigating = true; // Set navigation state
+                    window.location.href = href;
+                }
             });
         });
+
+        // Preload next and previous images
+        const preloadImages = () => {
+            if (state.isNavigating) return;
+            const nextIndex = (state.currentIndex + 1) % slides.length;
+            const prevIndex = (state.currentIndex - 1 + slides.length) % slides.length;
+            
+            [nextIndex, prevIndex].forEach(index => {
+                const img = slides[index].querySelector('img');
+                if (img && !img.complete) {
+                    img.setAttribute('loading', 'eager');
+                }
+            });
+        };
+
+        // Call preloadImages initially and after each navigation
+        preloadImages();
+        carousel.addEventListener('slideChange', preloadImages);
     };
 
-    // Initialize carousels using requestIdleCallback
+    // Initialize all carousels
     const carousels = document.querySelectorAll('.oc-carousel-wrapper');
     if ('requestIdleCallback' in window) {
         carousels.forEach(carousel => {
